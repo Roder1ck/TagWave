@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TagWave — Music Metadata Tagger</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --surface2: #1c2330;
+    --border:   #30363d;
+    --cyan:     #39d0c8;
+    --cyan-dim: #1a4f4d;
+    --text:     #e6edf3;
+    --muted:    #7d8590;
+    --success:  #3fb950;
+    --warn:     #d29922;
+    --danger:   #f85149;
+    --mono:     'IBM Plex Mono', monospace;
+    --sans:     'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: var(--cyan);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .logo-icon svg { width: 18px; height: 18px; }
+  .logo-name {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+  .logo-name span { color: var(--cyan); }
+
+  .header-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ── Layout ── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 0;
+    min-height: 0;
+  }
+
+  /* ── Left panel ── */
+  .left-panel {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Drop zone */
+  .drop-zone {
+    margin: 24px;
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    padding: 32px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--cyan);
+    background: rgba(57,208,200,0.04);
+  }
+  .drop-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon {
+    width: 40px; height: 40px;
+    margin: 0 auto 12px;
+    color: var(--cyan);
+  }
+  .drop-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .drop-sub {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  /* File queue */
+  .queue-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px 10px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: lowercase;
+    letter-spacing: 0.03em;
+  }
+  .queue-count {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 10px;
+  }
+  .btn-clear {
+    background: none; border: none; color: var(--muted); font-family: var(--mono);
+    font-size: 11px; cursor: pointer; padding: 2px 6px; border-radius: 4px;
+    transition: color 0.1s, background 0.1s;
+  }
+  .btn-clear:hover { color: var(--danger); background: rgba(248,81,73,0.08); }
+
+  .file-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 12px 12px;
+  }
+  .file-list::-webkit-scrollbar { width: 4px; }
+  .file-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .file-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.1s;
+    border: 1px solid transparent;
+  }
+  .file-item:hover { background: var(--surface2); }
+  .file-item.active {
+    background: var(--surface2);
+    border-color: var(--cyan);
+  }
+  .file-status {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .status-pending  { background: var(--border); }
+  .status-loading  { background: var(--warn); animation: pulse 1s infinite; }
+  .status-done     { background: var(--success); }
+  .status-error    { background: var(--danger); }
+  .status-skipped  { background: var(--muted); }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .file-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+  .file-ext {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--surface2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  /* Bottom actions */
+  .left-actions {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .btn {
+    padding: 9px 16px;
+    border-radius: 7px;
+    border: 1px solid;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .btn-primary {
+    background: var(--cyan);
+    border-color: var(--cyan);
+    color: #0d1117;
+  }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-ghost {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--muted);
+  }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--cyan); color: var(--cyan); }
+  .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Progress bar */
+  .progress-wrap { display: none; }
+  .progress-wrap.visible { display: block; }
+  .progress-label {
+    display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .progress-bar {
+    height: 3px; background: var(--border); border-radius: 2px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: var(--cyan); border-radius: 2px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  /* ── Right panel ── */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    background: var(--surface);
+  }
+  .tab {
+    padding: 14px 0;
+    margin-right: 28px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.1s, border-color 0.1s;
+  }
+  .tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  .panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px;
+  }
+  .panel-content::-webkit-scrollbar { width: 4px; }
+  .panel-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 12px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .empty-state svg { opacity: 0.2; }
+  .empty-state p { font-size: 14px; }
+  .empty-state small { font-family: var(--mono); font-size: 11px; }
+
+  /* ── Metadata editor ── */
+  .meta-layout {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 28px;
+    align-items: start;
+  }
+
+  .cover-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .cover-img {
+    width: 160px; height: 160px;
+    border-radius: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    object-fit: cover;
+    display: block;
+  }
+  .cover-placeholder {
+    width: 160px; height: 160px;
+    border-radius: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--border);
+  }
+  .confidence-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-align: center;
+    padding: 4px 8px;
+    border-radius: 5px;
+    border: 1px solid;
+  }
+  .conf-high  { color: var(--success); border-color: var(--success); background: rgba(63,185,80,0.07); }
+  .conf-med   { color: var(--warn);    border-color: var(--warn);    background: rgba(210,153,34,0.07); }
+  .conf-low   { color: var(--danger);  border-color: var(--danger);  background: rgba(248,81,73,0.07); }
+  .conf-remix { color: var(--cyan);    border-color: var(--cyan);    background: rgba(57,208,200,0.07); }
+
+  .meta-fields { display: flex; flex-direction: column; gap: 14px; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .field input, .field select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--text);
+    transition: border-color 0.1s;
+    width: 100%;
+  }
+  .field input:focus, .field select:focus {
+    outline: none;
+    border-color: var(--cyan);
+  }
+  .field input.modified { border-color: var(--warn); }
+  .field select option { background: var(--surface2); }
+
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  .genre-folder-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .genre-folder-row span { color: var(--cyan); }
+
+  .remix-banner {
+    display: none;
+    background: rgba(57,208,200,0.07);
+    border: 1px solid var(--cyan-dim);
+    border-radius: 7px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--cyan);
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .remix-banner.show { display: flex; }
+
+  .meta-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Results table ── */
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .results-table th {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-align: left;
+    padding: 0 12px 10px;
+    font-weight: 400;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--border);
+  }
+  .results-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(48,54,61,0.5);
+    vertical-align: middle;
+  }
+  .results-table tr:hover td { background: var(--surface2); }
+  .results-table tr.active-row td { background: rgba(57,208,200,0.05); }
+
+  .td-status { width: 28px; }
+  .td-file   { font-family: var(--mono); font-size: 11px; color: var(--muted); max-width: 180px; }
+  .td-title  { font-weight: 500; }
+  .td-genre  { font-family: var(--mono); font-size: 11px; }
+  .td-folder { font-family: var(--mono); font-size: 11px; color: var(--cyan); }
+  .td-action { width: 80px; }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-family: var(--mono);
+    font-size: 10px;
+    border: 1px solid;
+  }
+  .pill-remix { color: var(--cyan); border-color: var(--cyan-dim); background: rgba(57,208,200,0.07); }
+  .pill-orig  { color: var(--muted); border-color: var(--border); }
+
+  /* ── Genre map tab ── */
+  .genre-map-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  .genre-map-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+  }
+  .genre-arrow { color: var(--border); font-family: var(--mono); }
+  .genre-from { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .genre-to   { color: var(--cyan); font-family: var(--mono); font-size: 11px; font-weight: 500; }
+  .genre-map-item input {
+    background: transparent; border: none; color: var(--cyan);
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    width: 90px; padding: 2px 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .genre-map-item input:focus { outline: none; border-bottom-color: var(--cyan); }
+
+  .section-title {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+    margin-bottom: 14px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Setup tab ── */
+  .setup-block {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .setup-block h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  .setup-block p {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+  .code-block {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.6;
+  }
+  .code-comment { color: var(--muted); }
+  .code-key     { color: var(--cyan); }
+  .code-str     { color: #a5d6ff; }
+  .code-num     { color: #79c0ff; }
+
+  .setup-step {
+    display: flex; gap: 14px; align-items: flex-start; margin-bottom: 16px;
+  }
+  .step-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--cyan-dim); border: 1px solid var(--cyan);
+    color: var(--cyan); font-family: var(--mono); font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 2px;
+  }
+  .step-body h4 { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .step-body p  { font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+    display: flex; align-items: center; gap: 10px;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all 0.2s;
+    z-index: 999;
+    max-width: 320px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--success); }
+  .toast.error   { border-color: var(--danger); }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .left-panel { border-right: none; border-bottom: 1px solid var(--border); max-height: 300px; }
+    .meta-layout { grid-template-columns: 1fr; }
+    .genre-map-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="9" cy="9" r="7" stroke="#0d1117" stroke-width="1.5"/>
+        <circle cx="9" cy="9" r="3" fill="#0d1117"/>
+        <path d="M9 2v2M9 14v2M2 9h2M14 9h2" stroke="#0d1117" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <span class="logo-name">Tag<span>Wave</span></span>
+  </div>
+  <span class="header-meta">music metadata tagger · shazam-powered · github pages</span>
+</header>
+
+<main>
+  <!-- Left panel: file queue -->
+  <div class="left-panel">
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" multiple accept="audio/*">
+      <div class="drop-icon">
+        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M20 8v16M13 15l7-7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 28v4h24v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="drop-title">Drop audio files here</div>
+      <div class="drop-sub">mp3 · flac · wav · m4a · ogg · aiff</div>
+    </div>
+
+    <div class="queue-header">
+      <span>queue <span class="queue-count" id="queueCount">0</span></span>
+      <button class="btn-clear" onclick="clearQueue()">clear all</button>
+    </div>
+
+    <div class="file-list" id="fileList"></div>
+
+    <div class="left-actions">
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-label">
+          <span id="progressLabel">recognizing...</span>
+          <span id="progressPct">0%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+      <button class="btn btn-primary" id="btnRecognize" onclick="recognizeAll()" disabled>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 7l1.5 1.5L9 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Recognize all
+      </button>
+      <button class="btn btn-ghost" id="btnExport" onclick="exportJSON()" disabled>Export metadata JSON</button>
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="right-panel">
+    <div class="panel-tabs">
+      <div class="tab active" onclick="switchTab('editor')" id="tab-editor">Metadata editor</div>
+      <div class="tab" onclick="switchTab('results')" id="tab-results">All results</div>
+      <div class="tab" onclick="switchTab('genremap')" id="tab-genremap">Genre map</div>
+      <div class="tab" onclick="switchTab('setup')" id="tab-setup">Setup guide</div>
+    </div>
+
+    <!-- EDITOR TAB -->
+    <div class="panel-content" id="pane-editor">
+      <div class="empty-state" id="editorEmpty">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="2"/>
+          <circle cx="32" cy="32" r="10" stroke="currentColor" stroke-width="2"/>
+          <circle cx="32" cy="32" r="3" fill="currentColor"/>
+          <line x1="32" y1="4" x2="32" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="32" y1="42" x2="32" y2="60" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="4" y1="32" x2="22" y2="32" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="42" y1="32" x2="60" y2="32" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <p>No file selected</p>
+        <small>Add audio files and click Recognize all,<br>then select a file to edit its tags</small>
+      </div>
+      <div id="editorContent" style="display:none">
+        <div class="remix-banner" id="remixBanner">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7c0-2.76 2.24-5 5-5s5 2.24 5 5-2.24 5-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M10 5l2-2-2-2M4 11.5l-2 2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="remixText">Remix detected</span>
+        </div>
+        <div class="meta-layout">
+          <div class="cover-wrap">
+            <div class="cover-placeholder" id="coverPlaceholder">
+              <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="14" stroke="currentColor" stroke-width="2"/><circle cx="20" cy="20" r="5" stroke="currentColor" stroke-width="2"/></svg>
+            </div>
+            <img class="cover-img" id="coverImg" src="" alt="Cover art" style="display:none">
+            <div class="confidence-badge" id="confBadge">no match</div>
+            <div class="genre-folder-row">
+              📁 <span id="folderDisplay">—</span>
+            </div>
+          </div>
+          <div class="meta-fields">
+            <div class="field">
+              <label>title</label>
+              <input type="text" id="f-title" placeholder="Song title">
+            </div>
+            <div class="field">
+              <label>artist</label>
+              <input type="text" id="f-artist" placeholder="Artist name">
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>album</label>
+                <input type="text" id="f-album" placeholder="Album">
+              </div>
+              <div class="field">
+                <label>year</label>
+                <input type="text" id="f-year" placeholder="2024" maxlength="4">
+              </div>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label>genre (from shazam)</label>
+                <input type="text" id="f-genre" placeholder="Genre">
+              </div>
+              <div class="field">
+                <label>bpm</label>
+                <input type="text" id="f-bpm" placeholder="128" maxlength="5">
+              </div>
+            </div>
+            <div class="field">
+              <label>label / remixed by</label>
+              <input type="text" id="f-label" placeholder="Record label or remix artist">
+            </div>
+            <div class="field">
+              <label>folder category</label>
+              <select id="f-folder" onchange="updateFolderDisplay()">
+                <option value="">— override folder —</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="meta-actions">
+          <button class="btn btn-primary" onclick="saveCurrentMeta()">Save changes</button>
+          <button class="btn btn-ghost" onclick="recognizeSingle()">Re-recognize</button>
+          <button class="btn btn-ghost" onclick="clearCurrentMeta()">Clear fields</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RESULTS TAB -->
+    <div class="panel-content" id="pane-results" style="display:none">
+      <div class="section-title">all recognized tracks</div>
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th class="td-status"></th>
+            <th>file</th>
+            <th>title</th>
+            <th>artist</th>
+            <th>type</th>
+            <th>genre</th>
+            <th>folder</th>
+            <th class="td-action"></th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody">
+          <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted);font-size:12px;font-family:var(--mono)">no results yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- GENRE MAP TAB -->
+    <div class="panel-content" id="pane-genremap" style="display:none">
+      <div class="section-title">shazam genre → folder mapping — edit folder names to customize your library structure</div>
+      <div class="genre-map-grid" id="genreMapGrid"></div>
+    </div>
+
+    <!-- SETUP TAB -->
+    <div class="panel-content" id="pane-setup" style="display:none">
+      <div class="setup-block">
+        <h3>How TagWave works</h3>
+        <p>This app runs entirely in your browser. It sends audio fingerprints to Shazam's public API (via a CORS proxy) to identify tracks, then lets you edit and export metadata. For actually <em>writing</em> tags to your audio files, you need the companion Python script below — browsers can't write ID3/FLAC tags directly.</p>
+      </div>
+
+      <div class="setup-block">
+        <h3>Deploy to GitHub Pages</h3>
+        <div class="setup-step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h4>Create a new repository</h4>
+            <p>Go to github.com → New repository → name it <code style="color:var(--cyan)">tagwave</code> (or anything). Initialize with a README.</p>
+          </div>
+        </div>
+        <div class="setup-step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h4>Upload index.html</h4>
+            <p>Upload this <code style="color:var(--cyan)">index.html</code> file to your repo root. You can also add <code style="color:var(--cyan)">tagger.py</code> there.</p>
+          </div>
+        </div>
+        <div class="setup-step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h4>Enable GitHub Pages</h4>
+            <p>Settings → Pages → Source: Deploy from branch → Branch: main → folder: / (root) → Save. Your site will be live at <code style="color:var(--cyan)">https://yourusername.github.io/tagwave</code></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="setup-block">
+        <h3>Python tag writer — tagger.py</h3>
+        <p>Download your metadata JSON from TagWave, then run this script to write tags and sort files into genre folders.</p>
+        <div class="code-block"><span class="code-comment"># tagger.py — pip install shazamio mutagen</span>
+<span class="code-key">import</span> json, shutil, asyncio
+<span class="code-key">from</span> pathlib <span class="code-key">import</span> Path
+<span class="code-key">from</span> mutagen.id3 <span class="code-key">import</span> ID3, TIT2, TPE1, TALB, TCON, TBPM, TDRC, TPE4
+<span class="code-key">from</span> mutagen.flac <span class="code-key">import</span> FLAC
+<span class="code-key">from</span> shazamio <span class="code-key">import</span> Shazam
+
+<span class="code-comment"># ── Config ─────────────────────────────────────</span>
+INPUT_DIR  = Path(<span class="code-str">"./music"</span>)       <span class="code-comment"># your audio files</span>
+OUTPUT_DIR = Path(<span class="code-str">"./sorted"</span>)      <span class="code-comment"># sorted output</span>
+META_JSON  = Path(<span class="code-str">"./metadata.json"</span>) <span class="code-comment"># exported from TagWave</span>
+
+<span class="code-comment"># ── Genre → folder map ──────────────────────────</span>
+GENRE_MAP = {
+    <span class="code-str">"Deep House"</span>: <span class="code-str">"House"</span>,   <span class="code-str">"Tech House"</span>: <span class="code-str">"House"</span>,
+    <span class="code-str">"Progressive House"</span>: <span class="code-str">"House"</span>,  <span class="code-str">"Afro House"</span>: <span class="code-str">"House"</span>,
+    <span class="code-str">"Melodic Techno"</span>: <span class="code-str">"Techno"</span>,   <span class="code-str">"Hard Techno"</span>: <span class="code-str">"Techno"</span>,
+    <span class="code-str">"Detroit Techno"</span>: <span class="code-str">"Techno"</span>,   <span class="code-str">"Industrial"</span>: <span class="code-str">"Techno"</span>,
+    <span class="code-str">"Drum and Bass"</span>: <span class="code-str">"DnB"</span>,      <span class="code-str">"Liquid DnB"</span>: <span class="code-str">"DnB"</span>,
+    <span class="code-str">"Jungle"</span>: <span class="code-str">"DnB"</span>,
+    <span class="code-str">"Dubstep"</span>: <span class="code-str">"Bass"</span>,        <span class="code-str">"Riddim"</span>: <span class="code-str">"Bass"</span>,
+    <span class="code-str">"Trap"</span>: <span class="code-str">"Bass"</span>,             <span class="code-str">"UK Bass"</span>: <span class="code-str">"Bass"</span>,
+    <span class="code-str">"Trance"</span>: <span class="code-str">"Trance"</span>,         <span class="code-str">"Psytrance"</span>: <span class="code-str">"Trance"</span>,
+    <span class="code-str">"Hip-Hop"</span>: <span class="code-str">"Hip-Hop"</span>,       <span class="code-str">"Rap"</span>: <span class="code-str">"Hip-Hop"</span>,
+    <span class="code-str">"Electronic"</span>: <span class="code-str">"Electronic"</span>, <span class="code-str">"EDM"</span>: <span class="code-str">"Electronic"</span>,
+}
+
+<span class="code-key">async def</span> recognize_file(path):
+    shazam = Shazam()
+    out = <span class="code-key">await</span> shazam.recognize(str(path))
+    track = out.get(<span class="code-str">"track"</span>, {})
+    <span class="code-key">return</span> {
+        <span class="code-str">"title"</span>:  track.get(<span class="code-str">"title"</span>, <span class="code-str">""</span>),
+        <span class="code-str">"artist"</span>: track.get(<span class="code-str">"subtitle"</span>, <span class="code-str">""</span>),
+        <span class="code-str">"album"</span>:  track.get(<span class="code-str">"sections"</span>, [{}])[<span class="code-num">0</span>].get(<span class="code-str">"metadata"</span>, []),
+        <span class="code-str">"genre"</span>:  track.get(<span class="code-str">"genres"</span>, {}).get(<span class="code-str">"primary"</span>, <span class="code-str">""</span>),
+    }
+
+<span class="code-key">def</span> write_mp3_tags(path, meta):
+    tags = ID3(path)
+    tags[<span class="code-str">"TIT2"</span>] = TIT2(text=[meta[<span class="code-str">"title"</span>]])
+    tags[<span class="code-str">"TPE1"</span>] = TPE1(text=[meta[<span class="code-str">"artist"</span>]])
+    tags[<span class="code-str">"TCON"</span>] = TCON(text=[meta[<span class="code-str">"genre"</span>]])
+    <span class="code-key">if</span> meta.get(<span class="code-str">"bpm"</span>): tags[<span class="code-str">"TBPM"</span>] = TBPM(text=[meta[<span class="code-str">"bpm"</span>]])
+    <span class="code-key">if</span> meta.get(<span class="code-str">"remixedBy"</span>): tags[<span class="code-str">"TPE4"</span>] = TPE4(text=[meta[<span class="code-str">"remixedBy"</span>]])
+    tags.save()
+
+<span class="code-key">def</span> sort_file(path, genre, folder_override=<span class="code-str">None</span>):
+    folder = folder_override <span class="code-key">or</span> GENRE_MAP.get(genre, <span class="code-str">"Unsorted"</span>)
+    dest = OUTPUT_DIR / folder / path.name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, dest)
+    <span class="code-key">return</span> dest
+
+<span class="code-comment"># ── Main ────────────────────────────────────────</span>
+<span class="code-key">async def</span> main():
+    metas = json.loads(META_JSON.read_text()) <span class="code-key">if</span> META_JSON.exists() <span class="code-key">else</span> {}
+    <span class="code-key">for</span> f <span class="code-key">in</span> INPUT_DIR.rglob(<span class="code-str">"*"</span>):
+        <span class="code-key">if</span> f.suffix.lower() <span class="code-key">not in</span> {<span class="code-str">".mp3"</span>,<span class="code-str">".flac"</span>,<span class="code-str">".wav"</span>,<span class="code-str">".m4a"</span>}:
+            <span class="code-key">continue</span>
+        meta = metas.get(f.name) <span class="code-key">or await</span> recognize_file(f)
+        <span class="code-key">if</span> f.suffix == <span class="code-str">".mp3"</span>: write_mp3_tags(f, meta)
+        dest = sort_file(f, meta.get(<span class="code-str">"genre"</span>,<span class="code-str">""</span>), meta.get(<span class="code-str">"folderOverride"</span>))
+        print(<span class="code-key">f</span><span class="code-str">"✓ {f.name} → {dest.parent.name}/"</span>)
+
+asyncio.run(main())</div>
+      </div>
+
+      <div class="setup-block">
+        <h3>CORS proxy note</h3>
+        <p>Shazam's API doesn't allow direct browser requests. This app uses <code style="color:var(--cyan)">corsproxy.io</code> as a relay. For production use or high volume, run the Python script directly — it calls Shazam natively without a proxy.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════
+let files = [];        // {file, name, ext, status, meta}
+let activeIdx = null;
+let currentTab = 'editor';
+
+// Genre → folder map (editable)
+let genreMap = {
+  "Deep House": "House",      "Tech House": "House",
+  "Progressive House": "House","Afro House": "House",
+  "Garage House": "House",    "Funky House": "House",
+  "Melodic Techno": "Techno", "Hard Techno": "Techno",
+  "Detroit Techno": "Techno", "Industrial": "Techno",
+  "Minimal Techno": "Techno",
+  "Drum and Bass": "DnB",     "Liquid DnB": "DnB",
+  "Jungle": "DnB",            "Neurofunk": "DnB",
+  "Dubstep": "Bass",          "Riddim": "Bass",
+  "Trap": "Bass",             "UK Bass": "Bass",
+  "Future Bass": "Bass",
+  "Trance": "Trance",         "Psytrance": "Trance",
+  "Uplifting Trance": "Trance","Progressive Trance": "Trance",
+  "Hip-Hop": "Hip-Hop",       "Rap": "Hip-Hop",
+  "Boom Bap": "Hip-Hop",      "Drill": "Hip-Hop",
+  "Electronic": "Electronic", "EDM": "Electronic",
+  "Electro": "Electronic",    "Ambient": "Ambient",
+  "Pop": "Pop",               "Indie Pop": "Pop",
+  "R&B": "R&B",               "Soul": "R&B",
+  "Jazz": "Jazz",             "Nu-Jazz": "Jazz",
+  "Afrobeats": "World",       "Latin": "World",
+  "Reggaeton": "World",
+};
+
+const folders = [...new Set(Object.values(genreMap))].sort();
+
+// ═══════════════════════════════════════════════
+// File handling
+// ═══════════════════════════════════════════════
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  addFiles([...e.dataTransfer.files]);
+});
+fileInput.addEventListener('change', () => addFiles([...fileInput.files]));
+
+function addFiles(newFiles) {
+  const audio = newFiles.filter(f => f.type.startsWith('audio/') || /\.(mp3|flac|wav|m4a|ogg|aiff|opus)$/i.test(f.name));
+  audio.forEach(f => {
+    if (files.find(x => x.name === f.name)) return; // skip dupe
+    files.push({ file: f, name: f.name, ext: f.name.split('.').pop().toLowerCase(), status: 'pending', meta: {} });
+  });
+  renderQueue();
+  document.getElementById('btnRecognize').disabled = files.length === 0;
+}
+
+function clearQueue() {
+  files = []; activeIdx = null;
+  renderQueue();
+  showEmpty();
+  document.getElementById('btnRecognize').disabled = true;
+  document.getElementById('btnExport').disabled = true;
+}
+
+function renderQueue() {
+  const list = document.getElementById('fileList');
+  document.getElementById('queueCount').textContent = files.length;
+  if (!files.length) { list.innerHTML = ''; return; }
+  list.innerHTML = files.map((f, i) => `
+    <div class="file-item ${i === activeIdx ? 'active' : ''}" onclick="selectFile(${i})">
+      <div class="file-status status-${f.status}"></div>
+      <div class="file-name" title="${f.name}">${f.name.replace(/\.[^.]+$/, '')}</div>
+      <div class="file-ext">${f.ext}</div>
+    </div>
+  `).join('');
+}
+
+function selectFile(i) {
+  activeIdx = i;
+  renderQueue();
+  renderEditor(i);
+  if (currentTab !== 'editor') switchTab('editor');
+}
+
+// ═══════════════════════════════════════════════
+// Recognition
+// ═══════════════════════════════════════════════
+async function recognizeAll() {
+  if (!files.length) return;
+  const btn = document.getElementById('btnRecognize');
+  btn.disabled = true;
+  const wrap = document.getElementById('progressWrap');
+  wrap.classList.add('visible');
+
+  let done = 0;
+  for (let i = 0; i < files.length; i++) {
+    if (files[i].status === 'done') { done++; continue; }
+    files[i].status = 'loading';
+    renderQueue();
+    updateProgress(done, files.length, files[i].name);
+    try {
+      const meta = await callShazam(files[i].file);
+      files[i].meta = meta;
+      files[i].status = meta.title ? 'done' : 'error';
+    } catch (e) {
+      files[i].status = 'error';
+      files[i].meta = { error: e.message };
+    }
+    done++;
+    updateProgress(done, files.length);
+    if (i === activeIdx) renderEditor(i);
+  }
+
+  wrap.classList.remove('visible');
+  btn.disabled = false;
+  document.getElementById('btnExport').disabled = false;
+  renderQueue();
+  renderResults();
+  showToast(`Recognized ${files.filter(f=>f.status==='done').length} / ${files.length} tracks`, 'success');
+}
+
+async function recognizeSingle() {
+  if (activeIdx === null) return;
+  const f = files[activeIdx];
+  f.status = 'loading';
+  renderQueue();
+  try {
+    f.meta = await callShazam(f.file);
+    f.status = f.meta.title ? 'done' : 'error';
+  } catch(e) {
+    f.status = 'error'; f.meta = { error: e.message };
+  }
+  renderQueue();
+  renderEditor(activeIdx);
+  renderResults();
+}
+
+async function callShazam(file) {
+  // Convert file to ArrayBuffer → base64 clip (first 15s approx = 44100*2*2*15 bytes)
+  const buffer = await file.arrayBuffer();
+  // We'll send the raw audio bytes to a CORS proxy that wraps the Shazam endpoint
+  // Using the open shazam detect endpoint via corsproxy
+  const clip = buffer.slice(0, Math.min(buffer.byteLength, 500000)); // first ~500KB
+  const b64 = arrayBufferToBase64(clip);
+
+  // Try multiple approaches — primary: direct ShazamIO-compatible endpoint
+  const payload = {
+    timezone: "America/New_York",
+    signature: { samplems: 15000, uri: `data:audio/mp3;base64,${b64}` },
+    timestamp: Date.now(),
+    context: {},
+    geolocation: {}
+  };
+
+  // Use corsproxy.io to bypass CORS on Shazam's API
+  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent('https://amp.shazam.com/discovery/v5/en/US/iphone/-/tag/'+ crypto.randomUUID()+'/'+ crypto.randomUUID())}`;
+
+  let resp;
+  try {
+    resp = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Shazam-Platform': 'IPHONE', 'X-Shazam-Version': '14.1.0' },
+      body: JSON.stringify(payload)
+    });
+  } catch(e) {
+    throw new Error('Network error — check CORS proxy');
+  }
+
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  return parseShazamResponse(data, file.name);
+}
+
+function parseShazamResponse(data, filename) {
+  const track = data?.track;
+  if (!track) return { title: '', artist: '', genre: '', folder: 'Unsorted', recognized: false };
+
+  const title  = track.title || '';
+  const artist = track.subtitle || '';
+  const genre  = track.genres?.primary || '';
+  const coverUrl = track.images?.coverart || track.images?.background || '';
+  const bpm    = track.sections?.find(s=>s.type==='SONG')?.metadata?.find(m=>m.title==='BPM')?.text || '';
+  const label  = track.sections?.find(s=>s.type==='SONG')?.metadata?.find(m=>m.title==='Label')?.text || '';
+  const year   = track.sections?.find(s=>s.type==='SONG')?.metadata?.find(m=>m.title==='Released')?.text?.slice(0,4) || '';
+  const album  = track.sections?.find(s=>s.type==='SONG')?.metadata?.find(m=>m.title==='Album')?.text || '';
+
+  // Remix detection: check title for remix keywords
+  const remixPattern = /\b(remix|edit|bootleg|flip|rework|vip|dub|extended|club mix|radio edit)\b/i;
+  const isRemix = remixPattern.test(title) || remixPattern.test(filename);
+  let remixedBy = '';
+  if (isRemix) {
+    const m = title.match(/\(([^)]+(?:remix|edit|flip|bootleg|rework)[^)]*)\)/i);
+    remixedBy = m ? m[1].replace(/\s*(remix|edit|bootleg|flip|rework)\s*/i,'').trim() : '';
+  }
+
+  const folder = genreMap[genre] || inferFolder(genre);
+
+  return { title, artist, album, year, genre, bpm, label, coverUrl, folder, isRemix, remixedBy, recognized: true };
+}
+
+function inferFolder(genre) {
+  if (!genre) return 'Unsorted';
+  const g = genre.toLowerCase();
+  if (g.includes('house')) return 'House';
+  if (g.includes('techno')) return 'Techno';
+  if (g.includes('bass') || g.includes('dubstep')) return 'Bass';
+  if (g.includes('trance')) return 'Trance';
+  if (g.includes('drum') || g.includes('dnb') || g.includes('jungle')) return 'DnB';
+  if (g.includes('hip') || g.includes('rap') || g.includes('trap')) return 'Hip-Hop';
+  if (g.includes('ambient')) return 'Ambient';
+  if (g.includes('pop')) return 'Pop';
+  return 'Electronic';
+}
+
+// ═══════════════════════════════════════════════
+// Editor rendering
+// ═══════════════════════════════════════════════
+function renderEditor(i) {
+  const f = files[i];
+  document.getElementById('editorEmpty').style.display = 'none';
+  document.getElementById('editorContent').style.display = 'block';
+
+  const m = f.meta;
+  document.getElementById('f-title').value  = m.title  || '';
+  document.getElementById('f-artist').value = m.artist || '';
+  document.getElementById('f-album').value  = m.album  || '';
+  document.getElementById('f-year').value   = m.year   || '';
+  document.getElementById('f-genre').value  = m.genre  || '';
+  document.getElementById('f-bpm').value    = m.bpm    || '';
+  document.getElementById('f-label').value  = m.remixedBy || m.label || '';
+
+  // Folder select
+  const sel = document.getElementById('f-folder');
+  sel.innerHTML = '<option value="">— override folder —</option>' +
+    folders.map(fl => `<option value="${fl}" ${fl === m.folder ? 'selected':''} >${fl}</option>`).join('');
+
+  updateFolderDisplay();
+
+  // Cover art
+  if (m.coverUrl) {
+    document.getElementById('coverImg').src = m.coverUrl;
+    document.getElementById('coverImg').style.display = 'block';
+    document.getElementById('coverPlaceholder').style.display = 'none';
+  } else {
+    document.getElementById('coverImg').style.display = 'none';
+    document.getElementById('coverPlaceholder').style.display = 'flex';
+  }
+
+  // Confidence badge
+  const badge = document.getElementById('confBadge');
+  if (!m.recognized && f.status === 'pending') {
+    badge.textContent = 'pending'; badge.className = 'confidence-badge conf-low';
+  } else if (!m.recognized) {
+    badge.textContent = 'no match'; badge.className = 'confidence-badge conf-low';
+  } else if (m.isRemix) {
+    badge.textContent = 'remix ✓'; badge.className = 'confidence-badge conf-remix';
+  } else {
+    badge.textContent = 'matched ✓'; badge.className = 'confidence-badge conf-high';
+  }
+
+  // Remix banner
+  const banner = document.getElementById('remixBanner');
+  if (m.isRemix) {
+    banner.classList.add('show');
+    document.getElementById('remixText').textContent = m.remixedBy
+      ? `Remix by ${m.remixedBy} detected in title`
+      : 'Remix / edit detected in title — check "label / remixed by" field';
+  } else {
+    banner.classList.remove('show');
+  }
+}
+
+function showEmpty() {
+  document.getElementById('editorEmpty').style.display = '';
+  document.getElementById('editorContent').style.display = 'none';
+}
+
+function updateFolderDisplay() {
+  const sel = document.getElementById('f-folder').value;
+  const m = activeIdx !== null ? files[activeIdx].meta : {};
+  const folder = sel || m.folder || '—';
+  document.getElementById('folderDisplay').textContent = folder + '/';
+}
+
+function saveCurrentMeta() {
+  if (activeIdx === null) return;
+  const m = files[activeIdx].meta;
+  m.title      = document.getElementById('f-title').value;
+  m.artist     = document.getElementById('f-artist').value;
+  m.album      = document.getElementById('f-album').value;
+  m.year       = document.getElementById('f-year').value;
+  m.genre      = document.getElementById('f-genre').value;
+  m.bpm        = document.getElementById('f-bpm').value;
+  m.remixedBy  = document.getElementById('f-label').value;
+  const override = document.getElementById('f-folder').value;
+  if (override) m.folderOverride = override;
+  else delete m.folderOverride;
+  m.folder = override || inferFolder(m.genre);
+  renderResults();
+  showToast('Changes saved', 'success');
+}
+
+function clearCurrentMeta() {
+  if (activeIdx === null) return;
+  files[activeIdx].meta = {};
+  files[activeIdx].status = 'pending';
+  renderEditor(activeIdx);
+  renderQueue();
+}
+
+// ═══════════════════════════════════════════════
+// Results table
+// ═══════════════════════════════════════════════
+function renderResults() {
+  const tbody = document.getElementById('resultsBody');
+  if (!files.some(f => f.status !== 'pending')) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted);font-size:12px;font-family:var(--mono)">no results yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = files.map((f, i) => {
+    const m = f.meta;
+    const folder = m.folderOverride || m.folder || '—';
+    const isRemix = m.isRemix;
+    return `<tr class="${i === activeIdx ? 'active-row' : ''}" onclick="selectFile(${i})" style="cursor:pointer">
+      <td class="td-status"><div class="file-status status-${f.status}" style="margin:auto"></div></td>
+      <td class="td-file">${f.name.replace(/\.[^.]+$/,'').slice(0,24)}</td>
+      <td class="td-title">${m.title || '<span style="color:var(--muted)">—</span>'}</td>
+      <td>${m.artist || '<span style="color:var(--muted)">—</span>'}</td>
+      <td><span class="pill ${isRemix ? 'pill-remix':'pill-orig'}">${isRemix ? 'remix':'original'}</span></td>
+      <td class="td-genre" style="color:var(--muted)">${m.genre || '—'}</td>
+      <td class="td-folder">${folder}/</td>
+      <td class="td-action"><button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="event.stopPropagation();selectFile(${i});switchTab('editor')">edit</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════
+// Genre map tab
+// ═══════════════════════════════════════════════
+function renderGenreMap() {
+  const grid = document.getElementById('genreMapGrid');
+  grid.innerHTML = Object.entries(genreMap).map(([genre, folder]) => `
+    <div class="genre-map-item">
+      <span class="genre-from">${genre}</span>
+      <span class="genre-arrow">→</span>
+      <input class="genre-to" value="${folder}" data-genre="${genre}"
+        onchange="genreMap[this.dataset.genre]=this.value;updateFolderSelect()">
+    </div>
+  `).join('');
+}
+
+function updateFolderSelect() {
+  const newFolders = [...new Set(Object.values(genreMap))].sort();
+  folders.length = 0;
+  newFolders.forEach(f => folders.push(f));
+}
+
+// ═══════════════════════════════════════════════
+// Export
+// ═══════════════════════════════════════════════
+function exportJSON() {
+  const out = {};
+  files.forEach(f => { out[f.name] = f.meta; });
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'metadata.json';
+  a.click();
+  showToast('metadata.json downloaded', 'success');
+}
+
+// ═══════════════════════════════════════════════
+// UI helpers
+// ═══════════════════════════════════════════════
+function switchTab(id) {
+  currentTab = id;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel-content').forEach(p => p.style.display = 'none');
+  document.getElementById('tab-'+id).classList.add('active');
+  document.getElementById('pane-'+id).style.display = '';
+  if (id === 'genremap') renderGenreMap();
+  if (id === 'results')  renderResults();
+}
+
+function updateProgress(done, total, currentFile) {
+  const pct = Math.round((done / total) * 100);
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressLabel').textContent = currentFile
+    ? `recognizing: ${currentFile.slice(0,28)}…`
+    : `done ${done}/${total}`;
+}
+
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ═══════════════════════════════════════════════
+// Utils
+// ═══════════════════════════════════════════════
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+// Init
+renderGenreMap();
+</script>
+</body>
+</html>
